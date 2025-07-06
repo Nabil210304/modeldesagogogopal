@@ -54,9 +54,9 @@ pdf_text_global = ""
 # --- Koneksi Database dari app.py ---
 mydb = mysql.connector.connect(
     host="localhost",
-    user="root",
-    passwd="",
-    database="phkm"
+    user="u829376119_phhkm",
+    passwd="D3s@c1putriUmBB",
+    database="u829376119_phhkm"
 )
 mycursor = mydb.cursor()
 
@@ -703,4 +703,4 @@ def chat():
 # MAIN EXECUTION BLOCK
 # ==============================================================================
 if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=306, debug=True)
