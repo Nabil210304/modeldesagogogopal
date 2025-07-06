@@ -424,7 +424,7 @@ def video_feed():
 
 @app.route('/riwayat_absensi')
 def riwayat_absensi():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
+    mydb_local = mysql.connector.connect(host="srv590.hstgr.io", user="u829376119_phhkm", passwd="D3s@c1putriUmBB", database="u829376119_phhkm")
     cur = mydb_local.cursor()
     start, end, prs_nbr = request.args.get('start'), request.args.get('end'), request.args.get('prs_nbr')
     sql = "SELECT a.*, b.prs_name FROM accs_hist a LEFT JOIN prs_mstr b ON a.accs_prsn=b.prs_nbr"
@@ -481,7 +481,7 @@ def fr_page():
 
 @app.route('/countTodayScan')
 def countTodayScan():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
+    mydb_local = mysql.connector.connect(host="srv590.hstgr.io", user="u829376119_phhkm", passwd="D3s@c1putriUmBB", database="u829376119_phhkm")
     mycursor_local = mydb_local.cursor()
     mycursor_local.execute("select count(*) from accs_hist where accs_date = curdate()")
     row = mycursor_local.fetchone()
@@ -490,7 +490,7 @@ def countTodayScan():
 
 @app.route('/loadData', methods=['GET', 'POST'])
 def loadData():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
+    mydb_local = mysql.connector.connect(host="srv590.hstgr.io", user="u829376119_phhkm", passwd="D3s@c1putriUmBB", database="u829376119_phhkm")
     mycursor_local = mydb_local.cursor()
     mycursor_local.execute("SELECT a.accs_id, a.accs_prsn, b.prs_name, a.status, DATE_FORMAT(a.accs_added, '%Y-%m-%d'), a.masuk, a.keluar FROM accs_hist a LEFT JOIN prs_mstr b ON a.accs_prsn = b.prs_nbr WHERE a.accs_date = curdate() ORDER BY 1 DESC")
     data = mycursor_local.fetchall()
