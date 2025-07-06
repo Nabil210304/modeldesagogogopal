@@ -53,7 +53,7 @@ pdf_text_global = ""
 
 # --- Koneksi Database dari app.py ---
 mydb = mysql.connector.connect(
-    host="localhost",
+    host="srv590.hstgr.io",
     user="u829376119_phhkm",
     passwd="D3s@c1putriUmBB",
     database="u829376119_phhkm"
