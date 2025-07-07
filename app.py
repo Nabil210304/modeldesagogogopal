@@ -477,8 +477,16 @@ def riwayat_edit(id):
 
 @app.route('/')
 def fr_page():
-    mycursor.execute("select a.accs_id, a.accs_prsn, b.prs_name, a.accs_added from accs_hist a left join prs_mstr b on a.accs_prsn = b.prs_nbr where a.accs_date = curdate() order by 1 desc")
-    data = mycursor.fetchall()
+    mydb_local = mysql.connector.connect(
+        host="srv590.hstgr.io",
+        user="u829376119_phhkm",
+        passwd="D3s@c1putriUmBB",
+        database="u829376119_phhkm"
+    )
+    mycursor_local = mydb_local.cursor()
+    mycursor_local.execute("select a.accs_id, a.accs_prsn, b.prs_name, a.accs_added from accs_hist a left join prs_mstr b on a.accs_prsn = b.prs_nbr where a.accs_date = curdate() order by 1 desc")
+    data = mycursor_local.fetchall()
+    mydb_local.close()
     return render_template('fr_page.html', data=data)
 
 @app.route('/countTodayScan')
