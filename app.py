@@ -24,7 +24,9 @@ from transformers import pipeline, AutoModelForSequenceClassification, AutoToken
 # ==============================================================================
 # INISIALISASI APLIKASI FLASK DAN KONFIGURASI
 # ==============================================================================
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
+app = Flask(__name__,            # pastikan nama variabel konsisten
+            template_folder='templates',
+            static_folder='static')
 CORS(app)  # Diambil dari nabil.py untuk mengizinkan request API
 app.secret_key = 'bebasapasaja'  # Diambil dari app.py
 
