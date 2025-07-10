@@ -6,7 +6,9 @@
         <div class="flex-1 flex items-center justify-center">
             <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center">
                 <div class="absolute inset-0 rounded-3xl border-4 border-blue-500 shadow-2xl pointer-events-none"></div>
-                <img src="{{ url_for('video_feed') }}" class="object-contain w-full h-full rounded-3xl" alt="Live Camera Feed">
+                <video id="video" autoplay playsinline class="object-contain w-full h-full rounded-3xl"></video>
+                <button id="snap" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded">Ambil Foto</button>
+                <canvas id="canvas" width="640" height="480" style="display:none"></canvas>
                 <!-- Overlay -->
                 <div class="absolute top-4 left-4 z-10">
                     <span class="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">LIVE</span>
@@ -134,5 +136,27 @@ function myFunction() {
     }
   }
 }
+</script>
+<script>
+navigator.mediaDevices.getUserMedia({ video: true })
+  .then(stream => { document.getElementById('video').srcObject = stream; });
+
+document.getElementById('snap').onclick = function() {
+  let canvas = document.getElementById('canvas');
+  let video = document.getElementById('video');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(blob => {
+    let formData = new FormData();
+    formData.append('image', blob, 'capture.jpg');
+    fetch('/api/upload_image', { method: 'POST', body: formData })
+      .then(response => response.json())
+      .then(data => {
+        alert('Foto berhasil dikirim!');
+        // Anda bisa proses hasil face recognition di sini
+      });
+  }, 'image/jpeg');
+};
 </script>
 {% endblock %}
