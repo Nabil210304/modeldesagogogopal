@@ -6,8 +6,7 @@
         <div class="flex-1 flex items-center justify-center">
             <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center">
                 <div class="absolute inset-0 rounded-3xl border-4 border-blue-500 shadow-2xl pointer-events-none"></div>
-                <video id="video" autoplay playsinline class="object-contain w-full h-full rounded-3xl"></video>
-                <canvas id="canvas" width="640" height="480" style="display:none"></canvas>
+                <img src="{{ url_for('video_feed') }}" class="object-contain w-full h-full rounded-3xl" alt="Live Camera Feed">
                 <!-- Overlay -->
                 <div class="absolute top-4 left-4 z-10">
                     <span class="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">LIVE</span>
@@ -15,7 +14,6 @@
                 <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
                     <span class="bg-black bg-opacity-60 text-blue-300 text-sm px-2 py-1 rounded shadow">Face Recognition Active</span>
                 </div>
-                <div id="recognition-result" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 bg-white bg-opacity-80 rounded-lg px-6 py-4 text-center shadow-lg text-lg font-semibold text-blue-700" style="display:none"></div>
             </div>
         </div>
         <!-- Today Scan Table -->
@@ -136,48 +134,5 @@ function myFunction() {
     }
   }
 }
-</script>
-<script>
-navigator.mediaDevices.getUserMedia({ video: true })
-  .then(stream => { document.getElementById('video').srcObject = stream; });
-
-function sendFrame() {
-  let canvas = document.getElementById('canvas');
-  let video = document.getElementById('video');
-  let resultDiv = document.getElementById('recognition-result');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  canvas.toBlob(blob => {
-    let formData = new FormData();
-    formData.append('image', blob, 'capture.jpg');
-    fetch('/api/upload_image', { method: 'POST', body: formData })
-      .then(response => response.json())
-      .then(data => {
-        if (data.result && Array.isArray(data.result)) {
-          let msg = data.result.map(r => 
-            (r.name && r.name !== 'UNKNOWN' ? 
-              `<span class='text-green-700'>${r.name} (${r.confidence}%)</span>` : 
-              `<span class='text-red-700'>Tidak dikenali</span>`
-            )
-          ).join('<br>');
-          resultDiv.innerHTML = msg;
-          resultDiv.style.display = "block";
-        } else {
-          resultDiv.innerHTML = `<span class='text-red-700'>${data.result || 'Tidak terdeteksi wajah'}</span>`;
-          resultDiv.style.display = "block";
-        }
-        setTimeout(() => { resultDiv.style.display = "none"; }, 2000);
-      })
-      .catch(() => {
-        resultDiv.innerHTML = "<span class='text-red-700'>Gagal mengenali wajah</span>";
-        resultDiv.style.display = "block";
-        setTimeout(() => { resultDiv.style.display = "none"; }, 2000);
-      });
-  }, 'image/jpeg');
-}
-
-// Kirim frame otomatis setiap 1 detik
-setInterval(sendFrame, 1000);
 </script>
 {% endblock %}
