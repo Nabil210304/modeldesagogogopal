@@ -422,6 +422,10 @@ def vidfeed_dataset(nbr):
 
 @app.route('/video_feed')
 def video_feed():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        return "Kamera tidak tersedia di server cloud. Gunakan fitur upload foto dari browser.", 501
+    cap.release()
     return Response(face_recognition(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/riwayat_absensi')
