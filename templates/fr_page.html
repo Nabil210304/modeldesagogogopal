@@ -2,38 +2,34 @@
 {% block content %}
 <div class="container mx-auto px-2 py-8">
     <div class="flex flex-col lg:flex-row gap-8">
-        
+        <!-- Live Camera Feed -->
         <div class="flex-1 flex items-center justify-center">
-            <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center bg-gray-900 rounded-3xl overflow-hidden">
-                <div class="absolute inset-0 rounded-3xl border-4 border-blue-500 shadow-2xl pointer-events-none z-20"></div>
-                
-                <video id="videoElement" autoplay playsinline class="object-contain w-full h-full"></video>
-                
-                <canvas id="canvasElement" style="display:none;"></canvas>
-                
-                <div id="recognizedNameOverlay" class="absolute top-8 left-1/2 transform -translate-x-1/2 z-30 transition-opacity duration-300 ease-in-out opacity-0">
-                    <span id="recognizedName" class="bg-green-600 bg-opacity-80 text-white text-lg font-semibold px-4 py-2 rounded-lg shadow-lg"></span>
-                </div>
-
+            <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center">
+                <div class="absolute inset-0 rounded-3xl border-4 border-blue-500 shadow-2xl pointer-events-none"></div>
+                <img src="{{ url_for('video_feed') }}" class="object-contain w-full h-full rounded-3xl" alt="Live Camera Feed">
+                <!-- Overlay -->
                 <div class="absolute top-4 left-4 z-10">
                     <span class="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">LIVE</span>
                 </div>
+                <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
+                    <span class="bg-black bg-opacity-60 text-blue-300 text-sm px-2 py-1 rounded shadow">Face Recognition Active</span>
+                </div>
             </div>
         </div>
-        
+        <!-- Today Scan Table -->
         <div class="w-full lg:w-[680px] bg-white rounded-xl shadow-lg p-6">
             <h3 class="text-xl font-semibold mb-4">Today Scan</h3>
             <div class="relative mb-4">
-                <input type="text" id="myInput" onkeyup="myFunction()" placeholder="Cari berdasarkan nama..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <input type="text" id="myInput" onkeyup="myFunction()" placeholder="Search for names.." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
             </div>
-            <div class="overflow-x-auto h-[400px]">
+            <div class="overflow-x-auto">
                 <table id="myTable" class="min-w-full text-sm text-gray-700">
-                    <thead class="sticky top-0 bg-gray-100">
-                        <tr class="text-xs uppercase text-gray-500">
+                    <thead>
+                        <tr class="bg-gray-100 text-xs uppercase text-gray-500">
                             <th class="px-3 py-2 font-semibold">Person #</th>
                             <th class="px-3 py-2 font-semibold">Nama</th>
                             <th class="px-3 py-2 font-semibold">Tanggal</th>
@@ -43,7 +39,8 @@
                         </tr>
                     </thead>
                     <tbody id="scandata" class="bg-white">
-                        </tbody>
+                        <!-- Data diisi oleh JS -->
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -51,158 +48,91 @@
 </div>
 
 <script type="text/javascript">
-    // =================================================================
-    // BAGIAN 1: LOGIKA KAMERA DAN PENGIRIMAN FRAME KE SERVER
-    // =================================================================
-    const video = document.getElementById('videoElement');
-    const canvas = document.getElementById('canvasElement');
-    const context = canvas.getContext('2d');
-    const recognizedNameSpan = document.getElementById('recognizedName');
-    const recognizedNameOverlay = document.getElementById('recognizedNameOverlay');
-    
-    // 1. Minta akses kamera pengguna saat halaman dimuat
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
-            .then(function (stream) {
-                video.srcObject = stream;
-                video.play();
-            })
-            .catch(function (error) {
-                console.error("Error! Kamera tidak bisa diakses:", error);
-                alert("Tidak bisa mengakses kamera. Pastikan Anda memberikan izin pada browser.");
-            });
+    // Status badge color mapping
+    function statusBadge(status) {
+        if (status === "Hadir") {
+            return '<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">Hadir</span>';
+        } else if (status === "Pulang") {
+            return '<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-700">Pulang</span>';
+        } else if (status === "Tidak Hadir") {
+            return '<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700">Tidak Hadir</span>';
+        } else {
+            return '<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-500">'+(status||"-")+'</span>';
+        }
     }
 
-    // 2. Set interval untuk mengambil dan mengirim frame ke server
-    // Mengirim setiap 500ms (2 frame per detik)
-    setInterval(() => {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            // Atur ukuran canvas sesuai dengan ukuran video
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            // Gambar frame video saat ini ke canvas
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            // Konversi gambar di canvas menjadi format Base64
-            let dataURL = canvas.toDataURL('image/jpeg', 0.8);
+    $(document).ready(function() {
+        let lastcnt = 0;
+        let cnt;
+        chkNewScan();
 
-            // 3. Kirim data gambar ke server menggunakan Fetch API
-            fetch('/process_frame', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: dataURL }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                // 4. Terima hasil dari server dan perbarui UI
-                if (data && data.name && data.name !== 'UNKNOWN') {
-                    recognizedNameSpan.textContent = `${data.name} - ${data.status_absen}`;
-                    recognizedNameOverlay.classList.remove('opacity-0');
-                    if (data.just_scanned) {
-                        reloadTable(); // Jika scan berhasil, muat ulang tabel
+        function chkNewScan() {
+            countTodayScan();
+            setTimeout(chkNewScan, 1000);
+        }
+
+        function countTodayScan() {
+            $.ajax({
+                url: '/countTodayScan',
+                type: 'GET',
+                dataType: 'json',
+                success: function(data) {
+                    cnt = data.rowcount;
+                    if (cnt > lastcnt) {
+                        reloadTable();
                     }
-                } else {
-                    recognizedNameOverlay.classList.add('opacity-0');
+                    lastcnt = cnt;
+                },
+                error: function(result){
+                    console.log('no result!')
                 }
             })
-            .catch(error => {
-                console.error('Error saat mengirim frame:', error);
-                // Sembunyikan overlay jika ada error
-                recognizedNameOverlay.classList.add('opacity-0');
-            });
         }
-    }, 500);
 
-    // =================================================================
-    // BAGIAN 2: LOGIKA TABEL "TODAY SCAN"
-    // =================================================================
-
-    // Fungsi untuk memberikan warna pada status
-    function statusBadge(status) {
-        const statusMap = {
-            "Hadir": "bg-green-100 text-green-700",
-            "Terlambat": "bg-orange-100 text-orange-700",
-            "Pulang": "bg-blue-100 text-blue-700",
-            "Tidak Hadir": "bg-red-100 text-red-700"
-        };
-        const style = statusMap[status] || "bg-gray-100 text-gray-500";
-        return `<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full ${style}">${status || "-"}</span>`;
-    }
-    
-    // Fungsi untuk memuat ulang data tabel
-    function reloadTable() {
-        $.ajax({
-            url: '/loadData',
-            type: 'GET',
-            dataType: 'json',
-            success: function(response){
-                var tr = $("#scandata");
-                tr.empty();
-                if (response.response) {
+        function reloadTable() {
+            $.ajax({
+                url: '/loadData',
+                type: 'GET',
+                dataType: 'json',
+                success: function(response){
+                    var tr = $("#scandata");
+                    tr.empty();
                     $.each(response.response, function(i, item) {
                         tr.append('<tr class="border-b hover:bg-gray-50">'+
                             '<td class="px-3 py-2">'+(item[1]||"-")+'</td>'+
-                            '<td class="px-3 py-2 font-medium">'+(item[2]||"-")+'</td>'+
+                            '<td class="px-3 py-2">'+(item[2]||"-")+'</td>'+
                             '<td class="px-3 py-2">'+(item[4]||"--")+'</td>'+
                             '<td class="px-3 py-2">'+(item[5]||"--")+'</td>'+
                             '<td class="px-3 py-2">'+(item[6]||"--")+'</td>'+
-                            '<td class="px-3 py-2 text-center">'+statusBadge(item[3])+'</td>'+
+                            '<td class="px-3 py-2">'+statusBadge(item[3])+'</td>'+
                         '</tr>');
                     });
+                },
+                error: function(result){
+                    console.log('no result!')
                 }
-            },
-            error: function(result){
-                console.log('Gagal memuat data tabel!')
-            }
-        });
-    }
-
-    // Fungsi untuk memeriksa apakah ada scan baru
-    function chkNewScan(lastCount) {
-        $.ajax({
-            url: '/countTodayScan',
-            type: 'GET',
-            dataType: 'json',
-            success: function(data) {
-                let currentCount = data.rowcount;
-                if (currentCount > lastCount) {
-                    reloadTable();
-                }
-                // Panggil lagi dengan count yang baru
-                setTimeout(() => chkNewScan(currentCount), 3000); // Cek setiap 3 detik
-            },
-            error: function(){
-                // Jika error, coba lagi nanti
-                setTimeout(() => chkNewScan(lastCount), 5000);
-            }
-        });
-    }
-
-    // Jalankan saat dokumen siap
-    $(document).ready(function() {
-        reloadTable(); // Muat tabel pertama kali
-        chkNewScan(0); // Mulai polling untuk data baru
-    });
-
-    // =================================================================
-    // BAGIAN 3: FUNGSI PENCARIAN TABEL
-    // =================================================================
-    function myFunction() {
-      var input, filter, table, tr, td, i, txtValue;
-      input = document.getElementById("myInput");
-      filter = input.value.toUpperCase();
-      table = document.getElementById("myTable");
-      tr = table.getElementsByTagName("tr");
-      for (i = 1; i < tr.length; i++) { // Mulai dari 1 untuk skip header
-        td = tr[i].getElementsByTagName("td")[1]; // Kolom kedua (Nama)
-        if (td) {
-          txtValue = td.textContent || td.innerText;
-          if (txtValue.toUpperCase().indexOf(filter) > -1) {
-            tr[i].style.display = "";
-          } else {
-            tr[i].style.display = "none";
-          }
+            });
         }
+    });
+</script>
+<script>
+function myFunction() {
+  var input, filter, table, tr, td, i, txtValue;
+  input = document.getElementById("myInput");
+  filter = input.value.toUpperCase();
+  table = document.getElementById("myTable");
+  tr = table.getElementsByTagName("tr");
+  for (i = 1; i < tr.length; i++) { // mulai dari 1 agar header tidak ikut
+    td = tr[i].getElementsByTagName("td")[1];
+    if (td) {
+      txtValue = td.textContent || td.innerText;
+      if (txtValue.toUpperCase().indexOf(filter) > -1) {
+        tr[i].style.display = "";
+      } else {
+        tr[i].style.display = "none";
       }
     }
+  }
+}
 </script>
 {% endblock %}
