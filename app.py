@@ -711,3 +711,47 @@ def chat():
     chat_history.append({"role": "user", "content": prompt})
     response_text = query_model(chat_history)
     return jsonify({"response": response_text})
+
+@app.route('/api/upload_image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image uploaded'}), 400
+
+    file = request.files['image']
+    in_memory_file = io.BytesIO()
+    file.save(in_memory_file)
+    data = np.frombuffer(in_memory_file.getvalue(), dtype=np.uint8)
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+
+    # Gunakan fungsi face recognition yang sudah ada, atau refactor jadi menerima img
+    results = recognize_face_from_image(img)
+    if not results:
+        return jsonify({'result': 'No face detected'}), 200
+    return jsonify({'result': results}), 200
+
+def recognize_face_from_image(img):
+    faceCascade = cv2.CascadeClassifier(resource_path('../resources/haarcascade_frontalface_default.xml'))
+    eyeCascade = cv2.CascadeClassifier(resource_path('../resources/haarcascade_eye.xml'))
+    clf = cv2.face.LBPHFaceRecognizer_create()
+    clf.read(resource_path('../.venv/classifier.xml'))
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = faceCascade.detectMultiScale(gray, 1.1, 4)
+    results = []
+    for (x, y, w, h) in faces:
+        roi_gray = gray[y:y + h, x:x + w]
+        eyes = eyeCascade.detectMultiScale(roi_gray)
+        if len(eyes) < 1:
+            continue
+        id, pred = clf.predict(roi_gray)
+        confidence = int(100 * (1 - pred / 300))
+        if confidence > 70:
+            mycursor.execute("select a.img_person, b.prs_name from img_dataset a left join prs_mstr b on a.img_person = b.prs_nbr where img_id = %s", (id,))
+            row = mycursor.fetchone()
+            if row:
+                results.append({'person_id': row[0], 'name': row[1], 'confidence': confidence})
+            else:
+                results.append({'person_id': None, 'name': 'UNKNOWN', 'confidence': confidence})
+        else:
+            results.append({'person_id': None, 'name': 'UNKNOWN', 'confidence': confidence})
+    return results
