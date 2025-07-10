@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import requests
 import PyPDF2
-import base64
 import mysql.connector
 from PIL import Image
 from calendar import monthrange
@@ -78,33 +77,6 @@ sentiment_analysis = pipeline(
     "sentiment-analysis",
     model=MODEL_NAME
 )
-# --- PEMUATAN MODEL FACE RECOGNITION (BAGIAN YANG DITAMBAHKAN) ---
-base_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Path ke model Haar Cascade (pastikan ada folder 'resources' di proyek Anda)
-resources_path = os.path.join(base_dir, 'resources')
-face_cascade_path = os.path.join(resources_path, 'haarcascade_frontalface_default.xml')
-eye_cascade_path = os.path.join(resources_path, 'haarcascade_eye.xml')
-
-# Path ke file classifier yang sudah dilatih
-CLASSIFIER_PATH = os.path.join(base_dir, '.venv', 'classifier.xml') # Sesuaikan path ini jika perlu
-
-# Muat classifier dengan pengecekan error yang kuat
-faceCascade = cv2.CascadeClassifier(face_cascade_path)
-if faceCascade.empty():
-    raise IOError(f"Gagal memuat face cascade. Pastikan file ada di: {face_cascade_path}")
-
-eyeCascade = cv2.CascadeClassifier(eye_cascade_path)
-if eyeCascade.empty():
-    raise IOError(f"Gagal memuat eye cascade. Pastikan file ada di: {eye_cascade_path}")
-
-clf = cv2.face.LBPHFaceRecognizer_create()
-if os.path.exists(CLASSIFIER_PATH):
-    clf.read(CLASSIFIER_PATH)
-    print("Model classifier wajah berhasil dimuat.")
-else:
-    # Ini hanya peringatan, aplikasi tetap berjalan jika file belum ada (misal: sebelum training pertama)
-    print(f"PERINGATAN: File classifier.xml tidak ditemukan di {CLASSIFIER_PATH}")
 
 # ==============================================================================
 # FUNGSI HELPER DARI KEDUA FILE
@@ -231,97 +203,127 @@ def train_classifier(nbr):
 
 
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Face Recognition >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-def recognize_face_from_image(img):
-    global justscanned, pause_cnt, cnt
-    
-    result = {"name": "UNKNOWN", "status_absen": "", "progress": 0, "just_scanned": False}
-    
-    pause_cnt += 1
-    if pause_cnt > 80:
-        justscanned = False
-        pause_cnt = 0
+def face_recognition():
+    faceCascade = cv2.CascadeClassifier(resource_path('../resources/haarcascade_frontalface_default.xml'))
+    eyeCascade = cv2.CascadeClassifier(resource_path('../resources/haarcascade_eye.xml'))
+    clf = cv2.face.LBPHFaceRecognizer_create()
+    clf.read(resource_path('../.venv/classifier.xml'))
 
-    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    features = faceCascade.detectMultiScale(gray_image, 1.1, 10)
+    if faceCascade.empty() or eyeCascade.empty():
+        raise IOError("Cascade file not loaded. Cek path dan file XML.")
 
-    for (x, y, w, h) in features:
-        roi_gray = gray_image[y:y + h, x:x + w]
-        eyes = eyeCascade.detectMultiScale(roi_gray)
-        if len(eyes) < 1: continue
+    wCam, hCam = 400, 400
 
-        id, pred = clf.predict(roi_gray)
-        confidence = int(100 * (1 - pred / 300))
+    def draw_boundary(img, classifier, eye_classifier, scaleFactor, minNeighbors, color, text, clf):
+        gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        features = classifier.detectMultiScale(gray_image, scaleFactor, minNeighbors)
+        global justscanned, pause_cnt, cnt
+        pause_cnt += 1
+        coords = []
 
-        if confidence > 70 and not justscanned:
-            cnt += 1
-            if cnt > 30: cnt = 30
-            
-            result['progress'] = round((cnt / 30) * 100)
-            
-            mycursor.execute("SELECT b.prs_name FROM img_dataset a JOIN prs_mstr b ON a.img_person = b.prs_nbr WHERE img_id = %s", (id,))
-            pname_row = mycursor.fetchone()
-            pname = pname_row[0] if pname_row else "UNKNOWN"
-            result["name"] = pname
+        for (x, y, w, h) in features:
+            roi_gray = gray_image[y:y + h, x:x + w]
+            eyes = eye_classifier.detectMultiScale(roi_gray)
+            for (ex, ey, ew, eh) in eyes:
+                cv2.rectangle(img, (x + ex, y + ey), (x + ex + ew, y + ey + eh), (0, 255, 0), 2)
+            if len(eyes) < 1:
+                continue
 
-            if int(cnt) == 30:
-                mycursor.execute("SELECT accs_prsn FROM accs_hist WHERE accs_prsn = (SELECT img_person FROM img_dataset WHERE img_id=%s) AND accs_date=%s", (id, date.today()))
-                absen = mycursor.fetchone()
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+            id, pred = clf.predict(gray_image[y:y + h, x:x + w])
+            confidence = int(100 * (1 - pred / 300))
+
+            if confidence > 70 and not justscanned:
+                cnt += 1
+                if cnt > 30: cnt = 30
                 
-                mycursor.execute("SELECT img_person FROM img_dataset WHERE img_id = %s", (id,))
-                pnbr_row = mycursor.fetchone()
-                if pnbr_row is None: continue
-                pnbr = pnbr_row[0]
-                
+                n = (100 / 30) * cnt
+                w_filled = (cnt / 30) * w
+                cv2.putText(img, str(int(n)) + ' %', (x + 20, y + h + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (153, 255, 255), 2, cv2.LINE_AA)
+                cv2.rectangle(img, (x, y + h + 40), (x + w, y + h + 50), color, 2)
+                cv2.rectangle(img, (x, y + h + 40), (x + int(w_filled), y + h + 50), (153, 255, 255), cv2.FILLED)
+
+                mycursor.execute("select a.img_person, b.prs_name from img_dataset a left join prs_mstr b on a.img_person = b.prs_nbr where img_id = " + str(id))
+                row = mycursor.fetchone()
+                if row is None:
+                    cv2.putText(img, 'UNKNOWN', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                    continue
+
+                pnbr, pname = row[0], row[1] if row[1] is not None else ""
                 now = datetime.now()
-                jam_sekarang = now.strftime("%H:%M:%S")
                 current_time = now.strftime("%H:%M:%S")
+                jam_sekarang = now.strftime("%H:%M:%S")
                 masuk_start, masuk_end = "06:00:00", "08:00:00"
                 pulang_start, pulang_end = "13:00:00", "23:59:59"
 
-                if absen is None:
-                    if masuk_start <= current_time <= masuk_end:
-                        mycursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Hadir"))
-                    elif current_time > masuk_end and current_time < pulang_start:
-                        mycursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Terlambat"))
-                    elif pulang_start <= current_time <= pulang_end or current_time < masuk_start:
-                        mycursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, keluar, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Pulang"))
+                if masuk_start <= current_time <= masuk_end:
+                    statusabsen = "Absen Masuk"
+                    cv2.putText(img, pname + '-' + statusabsen, (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (34, 221, 34), 2, cv2.LINE_AA)
+                elif current_time > masuk_end and current_time < pulang_start:
+                    statusabsen = "Absen Masuk (Terlambat)"
+                    cv2.putText(img, pname + '-' + statusabsen, (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+                elif pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                    statusabsen = "Absen Pulang"
+                    cv2.putText(img, pname + '-' + statusabsen, (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
                 else:
-                    mycursor.execute("SELECT keluar FROM accs_hist WHERE accs_prsn=%s AND accs_date=%s", (pnbr, date.today()))
-                    jam_keluar_db = mycursor.fetchone()[0]
-                    if (pulang_start <= current_time <= pulang_end or current_time < masuk_start) and jam_keluar_db is None:
-                        mycursor.execute("UPDATE accs_hist SET keluar=%s, status='Pulang' WHERE accs_prsn=%s AND accs_date=%s", (jam_sekarang, pnbr, date.today()))
+                    cv2.putText(img, 'Di luar jam absensi', (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+                    return coords
 
-                mydb.commit()
-                cnt = 0
-                justscanned = True
-                pause_cnt = 0
-                result["just_scanned"] = True
-        
-        elif justscanned:
-            result["name"] = "Scan Berhasil"
-            result["progress"] = 100
-        else:
-            cnt = 0
-            result["name"] = "UNKNOWN"
-            result["progress"] = 0
-            
-    return result
+                if int(cnt) == 30:
+                    cnt = 0
+                    cursor = mydb.cursor()
+                    cursor.execute('SELECT * FROM accs_hist WHERE accs_prsn=%s and accs_date=%s', (pnbr, date.today()))
+                    absen = cursor.fetchone()
+                    if absen is None:
+                        if masuk_start <= current_time <= masuk_end:
+                            cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Hadir"))
+                        elif current_time > masuk_end and current_time < pulang_start:
+                            cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Terlambat"))
+                        elif pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                            cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, keluar) VALUES (%s, %s, %s)", (date.today(), pnbr, jam_sekarang))
+                        mydb.commit()
+                    else:
+                        if pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                            if absen[3] is None:
+                                cursor.execute("UPDATE accs_hist SET keluar=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, pnbr, date.today()))
+                                mydb.commit()
+                        elif masuk_start <= current_time <= pulang_start:
+                            if absen[2] is None:
+                                if masuk_start <= current_time <= masuk_end:
+                                    cursor.execute("UPDATE accs_hist SET masuk=%s, status=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, "Hadir", pnbr, date.today()))
+                                elif current_time > masuk_end:
+                                    cursor.execute("UPDATE accs_hist SET masuk=%s, status=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, "Terlambat", pnbr, date.today()))
+                                mydb.commit()
+                    time.sleep(1)
+                    justscanned = True
+                    pause_cnt = 0
+            else:
+                if not justscanned:
+                    cv2.putText(img, 'UNKNOWN', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                else:
+                    cv2.putText(img, '', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                if pause_cnt > 80:
+                    justscanned = False
+            coords = [x, y, w, h]
+        return coords
 
+    def recognize(img, clf, faceCascade, eyeCascade):
+        coords = draw_boundary(img, faceCascade, eyeCascade, 1.1, 10, (255, 255, 0), "Face", clf)
+        return img
 
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    try:
-        data = request.get_json()
-        image_data = data['image'].split(',')[1]
-        image_bytes = base64.b64decode(image_data)
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if img is None: raise ValueError("Gagal decode gambar")
-        result = recognize_face_from_image(img)
-        return jsonify(result)
-    except Exception as e:
-        print(f"Error processing frame: {e}")
-        return jsonify({"name": "Error", "status_absen": "Server Error", "progress": 0, "just_scanned": False})
+    cap = cv2.VideoCapture(0)
+    cap.set(3, wCam)
+    cap.set(4, hCam)
+
+    while True:
+        ret, img = cap.read()
+        img = recognize(img, clf, faceCascade, eyeCascade)
+        frame = cv2.imencode('.jpg', img)[1].tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+        key = cv2.waitKey(1)
+        if key == 27:
+            break
 
 
 @app.route('/petugas')
@@ -418,6 +420,9 @@ def vfdataset_page(prs):
 def vidfeed_dataset(nbr):
     return Response(generate_dataset(nbr), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/video_feed')
+def video_feed():
+    return Response(face_recognition(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/riwayat_absensi')
 def riwayat_absensi():
