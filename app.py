@@ -78,6 +78,33 @@ sentiment_analysis = pipeline(
     "sentiment-analysis",
     model=MODEL_NAME
 )
+# --- PEMUATAN MODEL FACE RECOGNITION (BAGIAN YANG DITAMBAHKAN) ---
+base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Path ke model Haar Cascade (pastikan ada folder 'resources' di proyek Anda)
+resources_path = os.path.join(base_dir, 'resources')
+face_cascade_path = os.path.join(resources_path, 'haarcascade_frontalface_default.xml')
+eye_cascade_path = os.path.join(resources_path, 'haarcascade_eye.xml')
+
+# Path ke file classifier yang sudah dilatih
+CLASSIFIER_PATH = os.path.join(base_dir, '.venv', 'classifier.xml') # Sesuaikan path ini jika perlu
+
+# Muat classifier dengan pengecekan error yang kuat
+faceCascade = cv2.CascadeClassifier(face_cascade_path)
+if faceCascade.empty():
+    raise IOError(f"Gagal memuat face cascade. Pastikan file ada di: {face_cascade_path}")
+
+eyeCascade = cv2.CascadeClassifier(eye_cascade_path)
+if eyeCascade.empty():
+    raise IOError(f"Gagal memuat eye cascade. Pastikan file ada di: {eye_cascade_path}")
+
+clf = cv2.face.LBPHFaceRecognizer_create()
+if os.path.exists(CLASSIFIER_PATH):
+    clf.read(CLASSIFIER_PATH)
+    print("Model classifier wajah berhasil dimuat.")
+else:
+    # Ini hanya peringatan, aplikasi tetap berjalan jika file belum ada (misal: sebelum training pertama)
+    print(f"PERINGATAN: File classifier.xml tidak ditemukan di {CLASSIFIER_PATH}")
 
 # ==============================================================================
 # FUNGSI HELPER DARI KEDUA FILE
