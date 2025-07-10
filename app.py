@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 import PyPDF2
+import base64
 import mysql.connector
 from PIL import Image
 from calendar import monthrange
