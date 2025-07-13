@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 import PyPDF2
+import base64
 import mysql.connector
 from PIL import Image
 from calendar import monthrange
@@ -24,12 +25,8 @@ from transformers import pipeline, AutoModelForSequenceClassification, AutoToken
 # ==============================================================================
 # INISIALISASI APLIKASI FLASK DAN KONFIGURASI
 # ==============================================================================
-<<<<<<< HEAD
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
-=======
 app = Flask(__name__)
 application = app
->>>>>>> 76fcb30e55dde2d6e7a9d3b5db854a31cb6f146f
 CORS(app)  # Diambil dari nabil.py untuk mengizinkan request API
 app.secret_key = 'bebasapasaja'  # Diambil dari app.py
 
@@ -46,6 +43,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # --- Dari nabil.py (NLP & API) ---
 MODEL_NAME = "abdmuffid/fine-tuned-indo-sentiment-3-class"
+API_KEY = "YOUR_API_KEY"
 GROQ_API_KEY = "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"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "deepseek-r1-distill-llama-70b"
@@ -57,26 +55,32 @@ pdf_text_global = ""
 
 # --- Koneksi Database dari app.py ---
 mydb = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    passwd="",
-    database="phkm"
+    host="srv590.hstgr.io",
+    user="u829376119_phhkm",
+    passwd="D3s@c1putriUmBB",
+    database="u829376119_phhkm"
 )
 mycursor = mydb.cursor()
 
 # --- Fungsi Helper Path ---
 def resource_path(*relative_path):
-    """Return absolute path to resource, relative to this file."""
+    """ Menggabungkan path dan menanganani '..' dengan benar. """
     base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, *relative_path)
-
+    path_to_join = os.path.join(base_path, *relative_path)
+    # INI BAGIAN PENTINGNYA
+    absolute_path = os.path.abspath(path_to_join)
+    return absolute_path
 # --- Muat Model Face Recognition SEKALI SAJA (VERSI EFISIEN) ---
 try:
+    # Path diubah dari '../resources' menjadi 'resources'
     face_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_frontalface_default.xml'))
     eye_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_eye.xml'))
+    
+    # Path untuk classifier juga diubah
     face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-    face_recognizer.read(resource_path('.venv/classifier.xml'))
-    print("✅ Model face recognition berhasil dimuat sekali saja.")
+    face_recognizer.read(resource_path('resources/classifier.xml'))
+    
+    print("✅ Model face recognition berhasil dimuat.")
 except Exception as e:
     print(f"❌ Gagal memuat model face recognition: {e}")
     face_cascade = eye_cascade = face_recognizer = None
@@ -569,7 +573,7 @@ def video_feed():
 
 @app.route('/riwayat_absensi')
 def riwayat_absensi():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
+    mydb_local = mysql.connector.connect(host="srv590.hstgr.io", user="u829376119_phhkm", passwd="D3s@c1putriUmBB", database="u829376119_phhkm")
     cur = mydb_local.cursor()
     start, end, prs_nbr = request.args.get('start'), request.args.get('end'), request.args.get('prs_nbr')
     sql = "SELECT a.*, b.prs_name FROM accs_hist a LEFT JOIN prs_mstr b ON a.accs_prsn=b.prs_nbr"
@@ -620,27 +624,6 @@ def riwayat_edit(id):
 
 @app.route('/')
 def fr_page():
-<<<<<<< HEAD
-    mycursor.execute("select a.accs_id, a.accs_prsn, b.prs_name, a.accs_added from accs_hist a left join prs_mstr b on a.accs_prsn = b.prs_nbr where a.accs_date = curdate() order by 1 desc")
-    data = mycursor.fetchall()
-    return render_template('fr_page.html', data=data)
-
-@app.route('/countTodayScan')
-def countTodayScan():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
-    mycursor_local = mydb_local.cursor()
-    mycursor_local.execute("select count(*) from accs_hist where accs_date = curdate()")
-    row = mycursor_local.fetchone()
-    rowcount = row[0]
-    return jsonify({'rowcount': rowcount})
-
-@app.route('/loadData', methods=['GET', 'POST'])
-def loadData():
-    mydb_local = mysql.connector.connect(host="localhost", user="root", passwd="", database="phkm")
-    mycursor_local = mydb_local.cursor()
-    mycursor_local.execute("SELECT a.accs_id, a.accs_prsn, b.prs_name, a.status, DATE_FORMAT(a.accs_added, '%Y-%m-%d'), a.masuk, a.keluar FROM accs_hist a LEFT JOIN prs_mstr b ON a.accs_prsn = b.prs_nbr WHERE a.accs_date = curdate() ORDER BY 1 DESC")
-    data = mycursor_local.fetchall()
-=======
     mydb_local = mysql.connector.connect(
         host="srv590.hstgr.io",
         user="u829376119_phhkm",
@@ -668,7 +651,6 @@ def loadData():
     mycursor_local = mydb_local.cursor()
     mycursor_local.execute("SELECT a.accs_id, a.accs_prsn, b.prs_name, a.status, DATE_FORMAT(a.accs_added, '%Y-%m-%d'), a.masuk, a.keluar FROM accs_hist a LEFT JOIN prs_mstr b ON a.accs_prsn = b.prs_nbr WHERE a.accs_date = curdate() ORDER BY 1 DESC")
     data = mycursor_local.fetchall()
->>>>>>> 76fcb30e55dde2d6e7a9d3b5db854a31cb6f146f
     result = []
     for row in data:
         row = list(row)
@@ -872,13 +854,3 @@ def chat():
     chat_history.append({"role": "user", "content": prompt})
     response_text = query_model(chat_history)
     return jsonify({"response": response_text})
-<<<<<<< HEAD
-
-
-# ==============================================================================
-# MAIN EXECUTION BLOCK
-# ==============================================================================
-if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=5000, debug=True)
-=======
->>>>>>> 76fcb30e55dde2d6e7a9d3b5db854a31cb6f146f
