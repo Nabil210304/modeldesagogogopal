@@ -73,12 +73,12 @@ def resource_path(*relative_path):
 # --- Muat Model Face Recognition SEKALI SAJA (VERSI EFISIEN) ---
 try:
     # Path diubah dari '../resources' menjadi 'resources'
-    face_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_frontalface_default.xml'))
-    eye_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_eye.xml'))
+    face_cascade = cv2.CascadeClassifier(resource_path('haarcascade_frontalface_default.xml'))
+    eye_cascade = cv2.CascadeClassifier(resource_path('haarcascade_eye.xml'))
     
     # Path untuk classifier juga diubah
     face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-    face_recognizer.read(resource_path('resources/classifier.xml'))
+    face_recognizer.read(resource_path('classifier.xml'))
     
     print("✅ Model face recognition berhasil dimuat.")
 except Exception as e:
