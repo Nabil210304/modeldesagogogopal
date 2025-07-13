@@ -61,21 +61,34 @@ mydb = mysql.connector.connect(
 )
 mycursor = mydb.cursor()
 
+# --- Fungsi Helper Path ---
+def resource_path(*relative_path):
+    """Return absolute path to resource, relative to this file."""
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, *relative_path)
+
+# --- Muat Model Face Recognition SEKALI SAJA (VERSI EFISIEN) ---
+try:
+    face_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_frontalface_default.xml'))
+    eye_cascade = cv2.CascadeClassifier(resource_path('resources/haarcascade_eye.xml'))
+    face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+    face_recognizer.read(resource_path('.venv/classifier.xml'))
+    print("✅ Model face recognition berhasil dimuat sekali saja.")
+except Exception as e:
+    print(f"❌ Gagal memuat model face recognition: {e}")
+    face_cascade = eye_cascade = face_recognizer = None
+
 # --- Pemuatan Model NLP dari nabil.py ---
 def download_model_once(model_name):
-    """Downloads the Hugging Face model and tokenizer if not already cached."""
     try:
         AutoTokenizer.from_pretrained(model_name)
         AutoModelForSequenceClassification.from_pretrained(model_name)
-        print("Model dan tokenizer sudah ada di cache atau berhasil di-download.")
+        print("✅ Model dan tokenizer NLP sudah ada atau berhasil di-download.")
     except Exception as e:
-        print(f"Gagal download model/tokenizer: {e}")
+        print(f"❌ Gagal download model/tokenizer NLP: {e}")
 
 download_model_once(MODEL_NAME)
-sentiment_analysis = pipeline(
-    "sentiment-analysis",
-    model=MODEL_NAME
-)
+sentiment_analysis = pipeline("sentiment-analysis", model=MODEL_NAME)
 
 # ==============================================================================
 # FUNGSI HELPER DARI KEDUA FILE
@@ -126,6 +139,134 @@ def query_model(chat_history):
 # BAGIAN I: FUNGSI DAN RUTE DARI SISTEM ABSENSI (app.py)
 # ==============================================================================
 
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<< FUNGSI PROSES FRAME (VERSI EFISIEN) >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+def process_client_frame(img):
+    """
+    Fungsi ini memproses frame dari klien menggunakan model yang sudah dimuat di awal.
+    """
+    # Cek apakah model sudah berhasil dimuat saat startup
+    if not all([face_cascade, eye_cascade, face_recognizer]):
+        cv2.putText(img, "Error: Model not loaded", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        return img
+
+    global justscanned, pause_cnt, cnt
+    pause_cnt += 1
+    
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    features = face_cascade.detectMultiScale(gray_image, scaleFactor=1.1, minNeighbors=10)
+
+    for (x, y, w, h) in features:
+        roi_gray = gray_image[y:y + h, x:x + w]
+        eyes = eye_cascade.detectMultiScale(roi_gray)
+        
+        if len(eyes) < 1:
+            continue
+            
+        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 0), 2)
+        
+        id, pred = face_recognizer.predict(roi_gray)
+        confidence = int(100 * (1 - pred / 300))
+
+        if confidence > 70 and not justscanned:
+            cnt += 1
+            if cnt > 30: cnt = 30
+            
+            n = (100 / 30) * cnt
+            w_filled = (cnt / 30) * w
+            cv2.putText(img, f'{int(n)} %', (x + 20, y + h + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (153, 255, 255), 2, cv2.LINE_AA)
+            cv2.rectangle(img, (x, y + h + 40), (x + w, y + h + 50), (255, 255, 0), 2)
+            cv2.rectangle(img, (x, y + h + 40), (x + int(w_filled), y + h + 50), (153, 255, 255), cv2.FILLED)
+
+            mycursor.execute("SELECT a.img_person, b.prs_name FROM img_dataset a LEFT JOIN prs_mstr b ON a.img_person = b.prs_nbr WHERE img_id = %s", (id,))
+            row = mycursor.fetchone()
+            if not row:
+                cv2.putText(img, 'UNKNOWN', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                continue
+
+            # (Sisa logika absensi tidak berubah)
+            pnbr, pname = row[0], row[1] or ""
+            now = datetime.now()
+            current_time = now.strftime("%H:%M:%S")
+            jam_sekarang = now.strftime("%H:%M:%S")
+            masuk_start, masuk_end = "06:00:00", "08:00:00"
+            pulang_start, pulang_end = "13:00:00", "23:59:59"
+
+            if masuk_start <= current_time <= masuk_end:
+                statusabsen = "Absen Masuk"
+                cv2.putText(img, f'{pname}-{statusabsen}', (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (34, 221, 34), 2, cv2.LINE_AA)
+            elif current_time > masuk_end and current_time < pulang_start:
+                statusabsen = "Absen Masuk (Terlambat)"
+                cv2.putText(img, f'{pname}-{statusabsen}', (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+            elif pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                statusabsen = "Absen Pulang"
+                cv2.putText(img, f'{pname}-{statusabsen}', (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
+            else:
+                cv2.putText(img, 'Di luar jam absensi', (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+                continue
+
+            if int(cnt) == 30:
+                cnt = 0
+                cursor = mydb.cursor()
+                cursor.execute('SELECT * FROM accs_hist WHERE accs_prsn=%s and accs_date=%s', (pnbr, date.today()))
+                absen = cursor.fetchone()
+                if absen is None:
+                    if masuk_start <= current_time <= masuk_end:
+                        cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Hadir"))
+                    elif current_time > masuk_end and current_time < pulang_start:
+                        cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, masuk, status) VALUES (%s, %s, %s, %s)", (date.today(), pnbr, jam_sekarang, "Terlambat"))
+                    elif pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                        cursor.execute("INSERT INTO accs_hist (accs_date, accs_prsn, keluar) VALUES (%s, %s, %s)", (date.today(), pnbr, jam_sekarang))
+                    mydb.commit()
+                else:
+                    if pulang_start <= current_time <= pulang_end or current_time < masuk_start:
+                        if absen[3] is None:
+                            cursor.execute("UPDATE accs_hist SET keluar=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, pnbr, date.today()))
+                            mydb.commit()
+                    elif masuk_start <= current_time <= pulang_start:
+                        if absen[2] is None:
+                            if masuk_start <= current_time <= masuk_end:
+                                cursor.execute("UPDATE accs_hist SET masuk=%s, status=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, "Hadir", pnbr, date.today()))
+                            elif current_time > masuk_end:
+                                cursor.execute("UPDATE accs_hist SET masuk=%s, status=%s WHERE accs_prsn=%s and accs_date=%s", (jam_sekarang, "Terlambat", pnbr, date.today()))
+                            mydb.commit()
+                time.sleep(1)
+                justscanned = True
+                pause_cnt = 0
+        else:
+            if not justscanned:
+                cv2.putText(img, 'UNKNOWN', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+            else:
+                cv2.putText(img, '', (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+            
+            if pause_cnt > 80:
+                justscanned = False
+                cnt = 0
+                
+    return img
+
+
+# <<<<<<<<<<<<<<<<<<<< ROUTE UNTUK MENERIMA FRAME DARI KLIEN >>>>>>>>>>>>>>>>>>>>>>>>>>>>
+@app.route('/process_frame', methods=['POST'])
+def process_frame_route():
+    data = request.json
+    if not data or 'image' not in data:
+        return jsonify(status='error', message='No image data'), 400
+
+    image_data = re.sub('^data:image/.+;base64,', '', data['image'])
+    try:
+        img_bytes = base64.b64decode(image_data)
+        np_arr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        processed_frame = process_client_frame(frame)
+
+        _, buffer = cv2.imencode('.jpg', processed_frame)
+        encoded_image = base64.b64encode(buffer).decode('utf-8')
+
+        return jsonify(status='success', image=encoded_image)
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+        return jsonify(status='error', message=str(e)), 500
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Generate dataset >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 def generate_dataset(nbr):
     face_classifier = cv2.CascadeClassifier(
