@@ -2,25 +2,24 @@
 {% block content %}
 <div class="container mx-auto px-2 py-8">
     <div class="flex flex-col lg:flex-row gap-8">
-        <!-- Live Camera Feed -->
-        <div class="flex-1 flex items-center justify-center">
-            <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center">
-                <div class="absolute inset-0 rounded-3xl border-4 border-blue-500 shadow-2xl pointer-events-none"></div>
-                <img src="{{ url_for('video_feed') }}" class="object-contain w-full h-full rounded-3xl" alt="Live Camera Feed">
-                <!-- Overlay -->
-                <div class="absolute top-4 left-4 z-10">
-                    <span class="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">LIVE</span>
-                </div>
-                <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
-                    <span class="bg-black bg-opacity-60 text-blue-300 text-sm px-2 py-1 rounded shadow">Face Recognition Active</span>
-                </div>
+        <div class="flex-1 flex flex-col items-center justify-center">
+            <p class="text-center text-gray-600 mb-2">Arahkan wajah Anda ke kamera.</p>
+            <div class="relative w-full max-w-2xl aspect-square mx-auto flex items-center justify-center bg-gray-900 rounded-3xl shadow-2xl">
+                <video id="webcam" autoplay playsinline class="w-full h-full object-contain rounded-3xl"></video>
+                
+                <img id="processed_feed" class="absolute inset-0 w-full h-full object-contain rounded-3xl" alt="Processed Feed">
+
+                <canvas id="canvas" class="hidden"></canvas>
+            </div>
+            <div id="webcam-error" class="text-red-500 mt-2 hidden">
+                Gagal mengakses kamera. Mohon berikan izin akses kamera pada browser Anda.
             </div>
         </div>
-        <!-- Today Scan Table -->
+        
         <div class="w-full lg:w-[680px] bg-white rounded-xl shadow-lg p-6">
             <h3 class="text-xl font-semibold mb-4">Today Scan</h3>
             <div class="relative mb-4">
-                <input type="text" id="myInput" onkeyup="myFunction()" placeholder="Search for names.." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <input type="text" id="myInput" onkeyup="myFunction()" placeholder="Cari nama.." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -39,8 +38,7 @@
                         </tr>
                     </thead>
                     <tbody id="scandata" class="bg-white">
-                        <!-- Data diisi oleh JS -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
         </div>
@@ -48,7 +46,7 @@
 </div>
 
 <script type="text/javascript">
-    // Status badge color mapping
+    // Fungsi untuk memberikan warna pada badge status
     function statusBadge(status) {
         if (status === "Hadir") {
             return '<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">Hadir</span>';
@@ -61,6 +59,7 @@
         }
     }
 
+    // Fungsi untuk me-refresh tabel absensi
     $(document).ready(function() {
         let lastcnt = 0;
         let cnt;
@@ -68,7 +67,7 @@
 
         function chkNewScan() {
             countTodayScan();
-            setTimeout(chkNewScan, 1000);
+            setTimeout(chkNewScan, 1000); // Cek setiap detik
         }
 
         function countTodayScan() {
@@ -84,7 +83,7 @@
                     lastcnt = cnt;
                 },
                 error: function(result){
-                    console.log('no result!')
+                    console.log('Error menghitung data scan hari ini!')
                 }
             })
         }
@@ -109,21 +108,23 @@
                     });
                 },
                 error: function(result){
-                    console.log('no result!')
+                    console.log('Error memuat data tabel!')
                 }
             });
         }
     });
 </script>
+
 <script>
+// Fungsi untuk filter/pencarian pada tabel
 function myFunction() {
   var input, filter, table, tr, td, i, txtValue;
   input = document.getElementById("myInput");
   filter = input.value.toUpperCase();
   table = document.getElementById("myTable");
   tr = table.getElementsByTagName("tr");
-  for (i = 1; i < tr.length; i++) { // mulai dari 1 agar header tidak ikut
-    td = tr[i].getElementsByTagName("td")[1];
+  for (i = 1; i < tr.length; i++) { // Mulai dari 1 agar header tidak ikut ter-filter
+    td = tr[i].getElementsByTagName("td")[1]; // Filter berdasarkan kolom Nama (indeks ke-1)
     if (td) {
       txtValue = td.textContent || td.innerText;
       if (txtValue.toUpperCase().indexOf(filter) > -1) {
@@ -134,5 +135,66 @@ function myFunction() {
     }
   }
 }
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const processedFeed = document.getElementById('processed_feed');
+    const errorMsg = document.getElementById('webcam-error');
+    const context = canvas.getContext('2d');
+
+    const constraints = { video: { width: 400, height: 400 } };
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+                // Kirim frame ke server setiap 150 milidetik (sekitar 6-7 FPS)
+                setInterval(sendFrameToServer, 150);
+            })
+            .catch(function(error) {
+                console.error("Error saat mengakses webcam: ", error);
+                errorMsg.classList.remove('hidden');
+            });
+    } else {
+        errorMsg.textContent = "Fitur kamera tidak didukung di browser ini.";
+        errorMsg.classList.remove('hidden');
+    }
+
+    function sendFrameToServer() {
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+            return; // Jangan lakukan apa-apa jika video belum siap
+        }
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Ubah gambar di canvas menjadi format base64 JPEG
+        const imageData = canvas.toDataURL('image/jpeg', 0.8); // Kualitas 80%
+
+        // Kirim data gambar ke server Flask menggunakan Fetch API
+        fetch("{{ url_for('process_frame_route') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Tampilkan gambar yang sudah diproses dari server
+                processedFeed.src = 'data:image/jpeg;base64,' + data.image;
+            } else {
+                console.error('Server error:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Gagal mengirim frame ke server:', error);
+        });
+    }
+});
 </script>
 {% endblock %}

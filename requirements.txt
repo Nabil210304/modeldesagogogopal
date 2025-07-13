@@ -4,7 +4,7 @@ Werkzeug
 mysql-connector-python
 PyMySQL
 Pillow
-opencv-python
+opencv-contrib-python
 numpy
 pandas
 scikit-learn
