@@ -72,18 +72,39 @@ def resource_path(*relative_path):
     return absolute_path
 # --- Muat Model Face Recognition SEKALI SAJA (VERSI EFISIEN) ---
 try:
-    # Path diubah dari '../resources' menjadi 'resources'
-    face_cascade = cv2.CascadeClassifier(resource_path('haarcascade_frontalface_default.xml'))
-    eye_cascade = cv2.CascadeClassifier(resource_path('haarcascade_eye.xml'))
+    # Tentukan path ke file-file XML
+    # __file__ adalah variabel yang berisi path ke file python saat ini (app.py)
+    # os.path.dirname() mendapatkan direktori dari path tersebut.
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Path untuk classifier juga diubah
+    face_cascade_path = os.path.join(base_dir, 'haarcascade_frontalface_default.xml')
+    eye_cascade_path = os.path.join(base_dir, 'haarcascade_eye.xml')
+    classifier_path = os.path.join(base_dir, 'classifier.xml')
+
+    # Muat classifier dari path yang sudah ditentukan
+    face_cascade = cv2.CascadeClassifier(face_cascade_path)
+    eye_cascade = cv2.CascadeClassifier(eye_cascade_path)
+    
     face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-    face_recognizer.read(resource_path('classifier.xml'))
+    face_recognizer.read(classifier_path)
+
+    # Periksa apakah model berhasil dimuat untuk menghindari error nanti
+    if face_cascade.empty():
+        print("❌ Gagal memuat haarcascade_frontalface_default.xml")
+        face_cascade = None
+    if eye_cascade.empty():
+        print("❌ Gagal memuat haarcascade_eye.xml")
+        eye_cascade = None
+    # Untuk face_recognizer, jika file tidak ada, .read() akan error dan ditangkap oleh except.
     
-    print("✅ Model face recognition berhasil dimuat.")
+    if face_cascade and eye_cascade:
+         print("✅ Model face recognition berhasil dimuat.")
+
 except Exception as e:
-    print(f"❌ Gagal memuat model face recognition: {e}")
-    face_cascade = eye_cascade = face_recognizer = None
+    print(f"❌ Terjadi kesalahan saat memuat model: {e}")
+    face_cascade = None
+    eye_cascade = None
+    face_recognizer = None
 
 # --- Pemuatan Model NLP dari nabil.py ---
 def download_model_once(model_name):
